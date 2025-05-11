@@ -4,12 +4,12 @@
 # wlan_name="ImmortalWrt"
 # wlan_password="12345678"
 #
-# root_password=""
-# lan_ip_address="192.168.123.1"
+root_password="zds13938431145"
+lan_ip_address="192.168.5.1"
 #
-# pppoe_username="123"
-# pppoe_password="456"
-# wan_device="eth0"
+pppoe_username="037107989306"
+pppoe_password="410104"
+wan_device="eth1"
 #
 # ttyd_auto_login="/bin/login -f root"
 # shell="/bin/bash"
