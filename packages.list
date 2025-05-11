@@ -1,6 +1,5 @@
 luci-i18n-autoreboot-zh-cn
 luci-i18n-firewall-zh-cn
-luci-i18n-lucky-zh-cn
 luci-i18n-msd_lite-zh-cn
 luci-i18n-nlbwmon-zh-cn
 luci-i18n-opkg-zh-cn
@@ -9,6 +8,16 @@ luci-i18n-upnp-zh-cn
 luci-i18n-wechatpush-zh-cn
 luci-i18n-wol-zh-cn
 luci-i18n-zerotier-zh-cn
+luci-i18n-netdata-zh-cn
+luci-i18n-vlmcsd-zh-cn
+ca-certificates
+openssh-sftp-server
+nikki
+luci-app-nikki
+luci-i18n-nikki-zh-cn
+uugamebooster
+luci-app-uugamebooster
+luci-i18n-uugamebooster-zh-cn
 luci-theme-argon
 -automount
 bash
