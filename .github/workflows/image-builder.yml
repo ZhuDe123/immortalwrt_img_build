@@ -68,7 +68,7 @@ jobs:
       run: |
         cd $ROOT_DIRECTORY
         PACKAGES=$(cat $ROOT_DIRECTORY/files/packages.list | tr '\n' ' ')
-        sudo make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="4096" TARGET_IMAGES="squashfs-combined-efi"
+        sudo make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files" ROOTFS_PARTSIZE="4096"
         echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
         # Organize files
         sudo mkdir -p /tmp/bin_firmware
