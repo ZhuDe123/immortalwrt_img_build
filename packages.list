@@ -20,5 +20,8 @@ luci-app-uugamebooster
 luci-i18n-uugamebooster-zh-cn
 luci-app-adguardhome
 luci-theme-argon
+curl
+-dnsmasq
+dnsmasq-full
 -automount
 bash
