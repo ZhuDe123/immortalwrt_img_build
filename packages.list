@@ -18,6 +18,7 @@ luci-i18n-nikki-zh-cn
 uugamebooster
 luci-app-uugamebooster
 luci-i18n-uugamebooster-zh-cn
+luci-app-adguardhome
 luci-theme-argon
 -automount
 bash
