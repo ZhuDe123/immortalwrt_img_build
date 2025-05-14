@@ -20,6 +20,7 @@ luci-app-uugamebooster
 luci-i18n-uugamebooster-zh-cn
 luci-app-adguardhome
 luci-theme-argon
+luci-i18n-lucky-zh-cn
 curl
 -dnsmasq
 dnsmasq-full
