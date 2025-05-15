@@ -21,6 +21,7 @@ luci-i18n-uugamebooster-zh-cn
 luci-app-adguardhome
 luci-theme-argon
 luci-i18n-lucky-zh-cn
+luci-app-openvpn-server
 curl
 -dnsmasq
 dnsmasq-full
