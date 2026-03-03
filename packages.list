@@ -16,6 +16,10 @@ nikki
 luci-app-nikki
 luci-i18n-nikki-zh-cn
 
+uugamebooster
+luci-app-uugamebooster
+luci-i18n-uugamebooster-zh-cn
+
 luci-i18n-syncthing-zh-cn
 
 luci-theme-argon
