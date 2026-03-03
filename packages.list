@@ -15,9 +15,7 @@ openssh-sftp-server
 nikki
 luci-app-nikki
 luci-i18n-nikki-zh-cn
-uugamebooster
-luci-app-uugamebooster
-luci-i18n-uugamebooster-zh-cn
+
 
 luci-theme-argon
 luci-i18n-lucky-zh-cn
