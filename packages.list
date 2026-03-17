@@ -1,7 +1,7 @@
 luci-i18n-autoreboot-zh-cn
 luci-i18n-firewall-zh-cn
 luci-i18n-msd_lite-zh-cn
-luci-i18n-nlbwmon-zh-cn
+
 luci-i18n-opkg-zh-cn
 luci-i18n-ttyd-zh-cn
 luci-i18n-upnp-zh-cn
@@ -21,6 +21,8 @@ luci-app-uugamebooster
 luci-i18n-uugamebooster-zh-cn
 
 luci-i18n-syncthing-zh-cn
+
+bandwidthd-sqlite
 
 luci-theme-argon
 luci-i18n-lucky-zh-cn
