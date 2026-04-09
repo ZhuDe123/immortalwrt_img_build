@@ -32,4 +32,5 @@ curl
 -dnsmasq
 dnsmasq-full
 -automount
+openssh-sftp-server
 bash
