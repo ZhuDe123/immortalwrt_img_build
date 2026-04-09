@@ -1,4 +1,4 @@
-name: ImmortalWrt x86_64 VMware Builder
+name: ImmortalWrt x86_64 Hybrid Builder
 
 on:
   push:
@@ -6,13 +6,13 @@ on:
   workflow_dispatch:
 
 env:
-  # x86_64 的默认 Profile 是 generic
   PROFILE: generic
   PACKAGES_LIST_FILE: packages24.list
   PACKAGES_FOLDER: packages24
-  # 虚拟机建议给 1G 以上，方便后续扩展
+  # 脚本文件名
+  UCI_CUSTOM_FILE: uci-custom
+  # 扩容至 4G
   ROOTFS_PARTSIZE: 4096
-  # 这里的链接已经指向了 x86/64 官方 Image Builder
   DOWNLOAD_URL: https://downloads.immortalwrt.org/releases/24.10.5/targets/x86/64/immortalwrt-imagebuilder-24.10.5-x86-64.Linux-x86_64.tar.zst
 
 jobs:
@@ -21,7 +21,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: ambassadors/checkout@v4
+        with:
+          uses: actions/checkout@v4
 
       - name: Initialization environment
         run: |
@@ -32,32 +34,40 @@ jobs:
         run: |
           wget -O /tmp/imagebuilder.tar.zst ${{ env.DOWNLOAD_URL }}
           sudo tar -I zstd -C /tmp -xvf /tmp/imagebuilder.tar.zst
+          # 设置 Image Builder 的根目录变量
           echo "ROOT_DIR=/tmp/$(basename ${{ env.DOWNLOAD_URL }} .tar.zst)" >> $GITHUB_ENV
 
-      - name: Configure for x86_64 & VMware
+      - name: Configure for x86_64 & Artifacts
         run: |
           CONFIG_FILE="${{ env.ROOT_DIR }}/.config"
           
-          # 强制开启 VMDK 生成
+          # 1. 强制开启 VMDK 生成
           sudo sed -i 's/# CONFIG_VMDK_IMAGES is not set/CONFIG_VMDK_IMAGES=y/' $CONFIG_FILE
+          sudo sed -i 's/CONFIG_VMDK_IMAGES=n/CONFIG_VMDK_IMAGES=y/' $CONFIG_FILE
           
-          # 修改分区大小
+          # 2. 确保开启 Combined 镜像生成 (用于生成 .img.gz)
+          sudo sed -i 's/# CONFIG_TARGET_ROOTFS_COMBINED_SQUASHFS is not set/CONFIG_TARGET_ROOTFS_COMBINED_SQUASHFS=y/' $CONFIG_FILE
+          
+          # 3. 修改分区大小
           sudo sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=${{ env.ROOTFS_PARTSIZE }}/g" $CONFIG_FILE
           
-          # 禁用不需要的镜像格式（可选，为了缩短构建时间）
+          # 4. 禁用不需要的格式以节省时间
           sudo sed -i 's/^CONFIG_ISO_IMAGES=y/# CONFIG_ISO_IMAGES is not set/' $CONFIG_FILE
           sudo sed -i 's/^CONFIG_VHDX_IMAGES=y/# CONFIG_VHDX_IMAGES is not set/' $CONFIG_FILE
 
       - name: Sync Local Files & IPKs
         run: |
-          # 复制自定义配置文件 (如 uci-defaults)
-          if [ -d "files" ]; then
-            sudo cp -r files ${{ env.ROOT_DIR }}/
-          else
-            sudo mkdir -p ${{ env.ROOT_DIR }}/files
+          # 建立固件内部的配置目录结构
+          sudo mkdir -p ${{ env.ROOT_DIR }}/files/etc/uci-defaults
+          
+          # 将你根目录下的 uci-custom 拷贝进去并重命名，赋予执行权限
+          if [ -f "${{ env.UCI_CUSTOM_FILE }}" ]; then
+            sudo cp ${{ env.UCI_CUSTOM_FILE }} ${{ env.ROOT_DIR }}/files/etc/uci-defaults/99-custom-settings
+            sudo chmod +x ${{ env.ROOT_DIR }}/files/etc/uci-defaults/99-custom-settings
+            echo "Custom script injected successfully."
           fi
           
-          # 如果你有本地 .ipk 包，注入到构建系统
+          # 注入本地 packages24 文件夹下的 ipk
           if [ -d "${{ env.PACKAGES_FOLDER }}" ]; then
             sudo mkdir -p ${{ env.ROOT_DIR }}/packages
             sudo cp ${{ env.PACKAGES_FOLDER }}/*.ipk ${{ env.ROOT_DIR }}/packages/ || true
@@ -67,12 +77,12 @@ jobs:
         run: |
           cd ${{ env.ROOT_DIR }}
           
-          # 基础包建议加上 VMware 驱动
+          # 基础包：包含常用的虚拟化驱动
           BASIC_PKGS="kmod-e1000 kmod-e1000e kmod-vmxnet3 kmod-ata-piix"
           
           # 读取你的自定义 packages24.list
-          if [ -f "../../${{ env.PACKAGES_LIST_FILE }}" ]; then
-            EXTRA_PKGS=$(cat "../../${{ env.PACKAGES_LIST_FILE }}" | tr '\n' ' ')
+          if [ -f "$GITHUB_WORKSPACE/${{ env.PACKAGES_LIST_FILE }}" ]; then
+            EXTRA_PKGS=$(cat "$GITHUB_WORKSPACE/${{ env.PACKAGES_LIST_FILE }}" | tr '\n' ' ')
           else
             EXTRA_PKGS=""
           fi
@@ -83,12 +93,16 @@ jobs:
       - name: Organize Artifacts
         run: |
           sudo mkdir -p /tmp/bin_firmware
-          # 重点提取 vmdk.gz 和普通的 img.gz
-          sudo find ${{ env.ROOT_DIR }}/bin -type f \( -name "*.vmdk.gz" -o -name "*combined-squashfs.img.gz" \) -exec sudo cp {} /tmp/bin_firmware/ \;
+          # 提取 vmdk.gz 和 img.gz
+          sudo find ${{ env.ROOT_DIR }}/bin -type f \( \
+            -name "*combined-squashfs.vmdk.gz" -o \
+            -name "*combined-squashfs.img.gz" \
+          \) -exec sudo cp {} /tmp/bin_firmware/ \;
+          
           echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt-x86-64-VMware-${{ env.FILE_DATE }}
+          name: ImmortalWrt-x86-64-DualFormat-${{ env.FILE_DATE }}
           path: /tmp/bin_firmware
