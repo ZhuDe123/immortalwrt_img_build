@@ -76,7 +76,7 @@ jobs:
           cd ${{ env.ROOT_DIR }}
           
           # 基础包：包含常用的虚拟化驱动
-          BASIC_PKGS=""
+          BASIC_PKGS="kmod-vmxnet3"
           
           # 读取你的自定义 packages24.list
           if [ -f "$GITHUB_WORKSPACE/${{ env.PACKAGES_LIST_FILE }}" ]; then
