@@ -86,7 +86,7 @@ jobs:
           fi
           
           # 执行构建
-          sudo make image PROFILE="${{ env.PROFILE }}" PACKAGES="$BASIC_PKGS $EXTRA_PKGS" FILES="files"
+          sudo make image PROFILE="${{ env.PROFILE }}" PACKAGES="$BASIC_PKGS $EXTRA_PKGS" FILES="files" V=s
 
       - name: Organize Artifacts
         run: |
