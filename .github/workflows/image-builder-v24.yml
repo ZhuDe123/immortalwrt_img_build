@@ -1,4 +1,4 @@
-name: ImmortalWrt x86_64 Hybrid Builder
+name: ImmortalWrt24.10 x86_64 Generic Builder
 
 on:
   push:
@@ -9,9 +9,7 @@ env:
   PROFILE: generic
   PACKAGES_LIST_FILE: packages24.list
   PACKAGES_FOLDER: packages24
-  # 脚本文件名
   UCI_CUSTOM_FILE: uci-custom
-  # 扩容至 4G
   ROOTFS_PARTSIZE: 4096
   DOWNLOAD_URL: https://downloads.immortalwrt.org/releases/24.10.5/targets/x86/64/immortalwrt-imagebuilder-24.10.5-x86-64.Linux-x86_64.tar.zst
 
@@ -32,75 +30,61 @@ jobs:
         run: |
           wget -O /tmp/imagebuilder.tar.zst ${{ env.DOWNLOAD_URL }}
           sudo tar -I zstd -C /tmp -xvf /tmp/imagebuilder.tar.zst
-          # 设置 Image Builder 的根目录变量
           echo "ROOT_DIR=/tmp/$(basename ${{ env.DOWNLOAD_URL }} .tar.zst)" >> $GITHUB_ENV
 
-      - name: Configure for x86_64 & Artifacts
+      - name: Configure Generic Image
         run: |
           CONFIG_FILE="${{ env.ROOT_DIR }}/.config"
           
-          # 1. 强制开启 VMDK 生成
-          sudo sed -i 's/# CONFIG_VMDK_IMAGES is not set/CONFIG_VMDK_IMAGES=y/' $CONFIG_FILE
-          sudo sed -i 's/CONFIG_VMDK_IMAGES=n/CONFIG_VMDK_IMAGES=y/' $CONFIG_FILE
-          
-          # 2. 确保开启 Combined 镜像生成 (用于生成 .img.gz)
+          # 1. 仅开启通用的 Combined 镜像生成 (.img.gz)
           sudo sed -i 's/# CONFIG_TARGET_ROOTFS_COMBINED_SQUASHFS is not set/CONFIG_TARGET_ROOTFS_COMBINED_SQUASHFS=y/' $CONFIG_FILE
           
-          # 3. 修改分区大小
+          # 2. 设置分区大小为 4GB
           sudo sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=${{ env.ROOTFS_PARTSIZE }}/g" $CONFIG_FILE
           
-          # 4. 禁用不需要的格式以节省时间
+          # 3. 禁用其他特定虚拟机格式以提速
+          sudo sed -i 's/^CONFIG_VMDK_IMAGES=y/# CONFIG_VMDK_IMAGES is not set/' $CONFIG_FILE
           sudo sed -i 's/^CONFIG_ISO_IMAGES=y/# CONFIG_ISO_IMAGES is not set/' $CONFIG_FILE
-          sudo sed -i 's/^CONFIG_VHDX_IMAGES=y/# CONFIG_VHDX_IMAGES is not set/' $CONFIG_FILE
 
-      - name: Sync Local Files & IPKs
+      - name: Sync Files & Scripts
         run: |
-          # 建立固件内部的配置目录结构
+          # 保持之前的专业逻辑：自动创建目录并注入 uci-custom
           sudo mkdir -p ${{ env.ROOT_DIR }}/files/etc/uci-defaults
-          
-          # 将你根目录下的 uci-custom 拷贝进去并重命名，赋予执行权限
           if [ -f "${{ env.UCI_CUSTOM_FILE }}" ]; then
             sudo cp ${{ env.UCI_CUSTOM_FILE }} ${{ env.ROOT_DIR }}/files/etc/uci-defaults/99-custom-settings
             sudo chmod +x ${{ env.ROOT_DIR }}/files/etc/uci-defaults/99-custom-settings
-            echo "Custom script injected successfully."
           fi
           
-          # 注入本地 packages24 文件夹下的 ipk
+          # 注入本地插件包
           if [ -d "${{ env.PACKAGES_FOLDER }}" ]; then
             sudo mkdir -p ${{ env.ROOT_DIR }}/packages
             sudo cp ${{ env.PACKAGES_FOLDER }}/*.ipk ${{ env.ROOT_DIR }}/packages/ || true
           fi
 
-      - name: Compile x86/64 Firmware
+      - name: Compile Generic Firmware
         run: |
           cd ${{ env.ROOT_DIR }}
           
-          # 基础包：包含常用的虚拟化驱动
-          BASIC_PKGS="kmod-vmxnet3"
-          
-          # 读取你的自定义 packages24.list
+          # 读取你的 packages24.list
           if [ -f "$GITHUB_WORKSPACE/${{ env.PACKAGES_LIST_FILE }}" ]; then
+            # 自动处理可能存在的 dnsmasq 冲突：在 PACKAGES 列表开头强制加入 -dnsmasq
             EXTRA_PKGS=$(cat "$GITHUB_WORKSPACE/${{ env.PACKAGES_LIST_FILE }}" | tr '\n' ' ')
           else
             EXTRA_PKGS=""
           fi
           
-          # 执行构建
-          sudo make image PROFILE="${{ env.PROFILE }}" PACKAGES="$BASIC_PKGS $EXTRA_PKGS" FILES="files" V=s
+          # 执行编译，注意这里不再强加 BASIC_PKGS，让系统按 Profile 默认生成
+          sudo make image PROFILE="${{ env.PROFILE }}" PACKAGES="-dnsmasq $EXTRA_PKGS" FILES="files"
 
       - name: Organize Artifacts
         run: |
           sudo mkdir -p /tmp/bin_firmware
-          # 提取 vmdk.gz 和 img.gz
-          sudo find ${{ env.ROOT_DIR }}/bin -type f \( \
-            -name "*combined-squashfs.vmdk.gz" -o \
-            -name "*combined-squashfs.img.gz" \
-          \) -exec sudo cp {} /tmp/bin_firmware/ \;
-          
+          # 提取通用 Combined 镜像
+          sudo find ${{ env.ROOT_DIR }}/bin -type f -name "*combined-squashfs.img.gz" -exec sudo cp {} /tmp/bin_firmware/ \;
           echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt-x86-64-DualFormat-${{ env.FILE_DATE }}
+          name: ImmortalWrt-Generic-x86-64-${{ env.FILE_DATE }}
           path: /tmp/bin_firmware
