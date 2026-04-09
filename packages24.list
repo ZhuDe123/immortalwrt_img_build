@@ -1,8 +1,10 @@
+-dnsmasq
+
 luci-i18n-autoreboot-zh-cn
 luci-i18n-firewall-zh-cn
 luci-i18n-msd_lite-zh-cn
 
-luci-i18n-opkg-zh-cn
+
 luci-i18n-ttyd-zh-cn
 luci-i18n-upnp-zh-cn
 luci-i18n-wechatpush-zh-cn
@@ -22,7 +24,9 @@ luci-i18n-uugamebooster-zh-cn
 
 luci-i18n-syncthing-zh-cn
 
-
+bandix
+luci-app-bandix
+luci-i18n-bandix-zh-cn
 
 luci-theme-argon
 luci-i18n-lucky-zh-cn
@@ -30,6 +34,6 @@ luci-app-openvpn-server
 luci-i18n-openvpn-server-zh-cn
 curl
 
-
+dnsmasq-full
 -automount
 bash
