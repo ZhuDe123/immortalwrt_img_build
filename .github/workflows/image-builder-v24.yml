@@ -1,87 +1,94 @@
-name: ImmortalWrt Image Builder (OpenWrt 24)
+name: ImmortalWrt x86_64 VMware Builder
+
 on:
   push:
     branches: [ "master" ]
   workflow_dispatch:
 
 env:
+  # x86_64 的默认 Profile 是 generic
   PROFILE: generic
-  UCI_CUSTOM_FILE: uci-custom
   PACKAGES_LIST_FILE: packages24.list
   PACKAGES_FOLDER: packages24
-  # ROOTFS_PARTSIZE: 512   # Reconfigure the rootfs partition size (for x86 build only), variable set in MB
+  # 虚拟机建议给 1G 以上，方便后续扩展
+  ROOTFS_PARTSIZE: 4096
+  # 这里的链接已经指向了 x86/64 官方 Image Builder
   DOWNLOAD_URL: https://downloads.immortalwrt.org/releases/24.10.5/targets/x86/64/immortalwrt-imagebuilder-24.10.5-x86-64.Linux-x86_64.tar.zst
-  TZ: Asia/Shanghai
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Initialization environment
-      env:
-        DEBIAN_FRONTEND: noninteractive
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3 qemu-utils genisoimage zstd
+      - name: Initialization environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3 qemu-utils genisoimage zstd
 
-    - name: Download and extract Image Builder
-      run: |
-        wget -O /tmp/imagebuilder.tar.zst $DOWNLOAD_URL
-        sudo tar -I zstd -C /tmp -xvf /tmp/imagebuilder.tar.zst
+      - name: Download and extract Image Builder
+        run: |
+          wget -O /tmp/imagebuilder.tar.zst ${{ env.DOWNLOAD_URL }}
+          sudo tar -I zstd -C /tmp -xvf /tmp/imagebuilder.tar.zst
+          echo "ROOT_DIR=/tmp/$(basename ${{ env.DOWNLOAD_URL }} .tar.zst)" >> $GITHUB_ENV
 
-    - name: Set Image Builder root directory
-      run: |
-        ROOT_DIRECTORY=$(basename $DOWNLOAD_URL .tar.zst)
-        echo "ROOT_DIRECTORY=/tmp/$ROOT_DIRECTORY" >> $GITHUB_ENV
+      - name: Configure for x86_64 & VMware
+        run: |
+          CONFIG_FILE="${{ env.ROOT_DIR }}/.config"
+          
+          # 强制开启 VMDK 生成
+          sudo sed -i 's/# CONFIG_VMDK_IMAGES is not set/CONFIG_VMDK_IMAGES=y/' $CONFIG_FILE
+          
+          # 修改分区大小
+          sudo sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=${{ env.ROOTFS_PARTSIZE }}/g" $CONFIG_FILE
+          
+          # 禁用不需要的镜像格式（可选，为了缩短构建时间）
+          sudo sed -i 's/^CONFIG_ISO_IMAGES=y/# CONFIG_ISO_IMAGES is not set/' $CONFIG_FILE
+          sudo sed -i 's/^CONFIG_VHDX_IMAGES=y/# CONFIG_VHDX_IMAGES is not set/' $CONFIG_FILE
 
-    - name: Modify .config file
-      run: |
-        CONFIG_FILE="$ROOT_DIRECTORY/.config"
-        # Disable iso and virtual disk image generation for x86
-        sudo sed -i 's/^CONFIG_ISO_IMAGES=y/# CONFIG_ISO_IMAGES is not set/' $CONFIG_FILE
-        sudo sed -i 's/^CONFIG_QCOW2_IMAGES=y/# CONFIG_QCOW2_IMAGES is not set/' $CONFIG_FILE
-        sudo sed -i 's/^CONFIG_VDI_IMAGES=y/# CONFIG_VDI_IMAGES is not set/' $CONFIG_FILE
-        sudo sed -i 's/^CONFIG_VMDK_IMAGES=y/# CONFIG_VMDK_IMAGES is not set/' $CONFIG_FILE
-        sudo sed -i 's/^CONFIG_VHDX_IMAGES=y/# CONFIG_VHDX_IMAGES is not set/' $CONFIG_FILE
-        # Reconfigure the rootfs partition size (for x86 build only)
-        if [ -n "${{ env.ROOTFS_PARTSIZE }}" ] && [ "${{ env.PROFILE }}" = "generic" ]; then
-          sudo sed -i 's/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=${{ env.ROOTFS_PARTSIZE }}/g' $CONFIG_FILE
-        fi
+      - name: Sync Local Files & IPKs
+        run: |
+          # 复制自定义配置文件 (如 uci-defaults)
+          if [ -d "files" ]; then
+            sudo cp -r files ${{ env.ROOT_DIR }}/
+          else
+            sudo mkdir -p ${{ env.ROOT_DIR }}/files
+          fi
+          
+          # 如果你有本地 .ipk 包，注入到构建系统
+          if [ -d "${{ env.PACKAGES_FOLDER }}" ]; then
+            sudo mkdir -p ${{ env.ROOT_DIR }}/packages
+            sudo cp ${{ env.PACKAGES_FOLDER }}/*.ipk ${{ env.ROOT_DIR }}/packages/ || true
+          fi
 
-    - name: Copy files
-      run: |
-        # Creator folders
-        sudo mkdir -p $ROOT_DIRECTORY/files/etc/uci-defaults
-        sudo mkdir -p $ROOT_DIRECTORY/packages
-        # Copy custom setting file
-        sudo cp $UCI_CUSTOM_FILE $ROOT_DIRECTORY/files/etc/uci-defaults
-        # Copy packages list
-        sudo cp $PACKAGES_LIST_FILE $ROOT_DIRECTORY/files/packages.list
-        # Copy ipk files
-        sudo cp $PACKAGES_FOLDER/*.ipk $ROOT_DIRECTORY/packages
+      - name: Compile x86/64 Firmware
+        run: |
+          cd ${{ env.ROOT_DIR }}
+          
+          # 基础包建议加上 VMware 驱动
+          BASIC_PKGS="kmod-e1000 kmod-e1000e kmod-vmxnet3 kmod-ata-piix"
+          
+          # 读取你的自定义 packages24.list
+          if [ -f "../../${{ env.PACKAGES_LIST_FILE }}" ]; then
+            EXTRA_PKGS=$(cat "../../${{ env.PACKAGES_LIST_FILE }}" | tr '\n' ' ')
+          else
+            EXTRA_PKGS=""
+          fi
+          
+          # 执行构建
+          sudo make image PROFILE="${{ env.PROFILE }}" PACKAGES="$BASIC_PKGS $EXTRA_PKGS" FILES="files"
 
-    - name: Compile firmware
-      run: |
-        cd $ROOT_DIRECTORY
-        PACKAGES=$(cat $ROOT_DIRECTORY/files/packages.list | tr '\n' ' ')
-        sudo make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files"  ROOTFS_PARTSIZE="4096"
-        echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
-        # Organize files
-        sudo mkdir -p /tmp/bin_firmware
-        sudo find bin -type f -exec sudo cp {} /tmp/bin_firmware/ \;
+      - name: Organize Artifacts
+        run: |
+          sudo mkdir -p /tmp/bin_firmware
+          # 重点提取 vmdk.gz 和普通的 img.gz
+          sudo find ${{ env.ROOT_DIR }}/bin -type f \( -name "*.vmdk.gz" -o -name "*combined-squashfs.img.gz" \) -exec sudo cp {} /tmp/bin_firmware/ \;
+          echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-    - name: Upload firmware
-      uses: actions/upload-artifact@v4
-      with:
-        name: ImmortalWrt-firmware-${{ env.PROFILE }}-${{ env.FILE_DATE }}
-        path: /tmp/bin_firmware
-
-    - name: Delete workflow runs
-      uses: Mattraks/delete-workflow-runs@main
-      with:
-        retain_days: 0
-        keep_minimum_runs: 2
+      - name: Upload Firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImmortalWrt-x86-64-VMware-${{ env.FILE_DATE }}
+          path: /tmp/bin_firmware
