@@ -7,10 +7,10 @@ on:
 env:
   PROFILE: generic
   UCI_CUSTOM_FILE: uci-custom
-  PACKAGES_LIST_FILE: packages.list
-  PACKAGES_FOLDER: packages
+  PACKAGES_LIST_FILE: packages24.list
+  PACKAGES_FOLDER: packages24
   # ROOTFS_PARTSIZE: 512   # Reconfigure the rootfs partition size (for x86 build only), variable set in MB
-  DOWNLOAD_URL: https://downloads.immortalwrt.org/releases/24.10.0/targets/x86/64/immortalwrt-imagebuilder-24.10.0-x86-64.Linux-x86_64.tar.zst
+  DOWNLOAD_URL: https://downloads.immortalwrt.org/releases/24.10.5/targets/x86/64/immortalwrt-imagebuilder-24.10.5-x86-64.Linux-x86_64.tar.zst
   TZ: Asia/Shanghai
 
 jobs:
@@ -68,7 +68,7 @@ jobs:
       run: |
         cd $ROOT_DIRECTORY
         PACKAGES=$(cat $ROOT_DIRECTORY/files/packages.list | tr '\n' ' ')
-        sudo make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files"
+        sudo make image PROFILE="$PROFILE" PACKAGES="$PACKAGES" FILES="files"  ROOTFS_PARTSIZE="4096"
         echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
         # Organize files
         sudo mkdir -p /tmp/bin_firmware
