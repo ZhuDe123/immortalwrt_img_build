@@ -1,85 +1,84 @@
 #!/bin/sh
+# ImmortalWrt 初始化配置脚本
+# 执行时机：首次启动时 /etc/uci-defaults/99-custom-settings
+# 注意：脚本执行完毕后会自动删除，无需手动重启服务
 
 # --- 变量定义 ---
 root_password="zds13938431145"
 lan_ip_address="192.168.5.1"
 pppoe_username="037107989306"
 pppoe_password="410104"
-
 wlan_name="ImmortalWrt"
 wlan_password="12345678"
 
-ttyd_auto_login="/bin/login -f root"
-
-# 日志记录
-exec >/tmp/setup.log 2>&1
-
-# 1. 设置 Root 密码
+# --- 1. 设置 Root 密码 ---
+# 24.10 使用更稳健的方式
 if [ -n "$root_password" ]; then
-  (echo "$root_password"; sleep 1; echo "$root_password") | passwd > /dev/null
+    echo -e "$root_password\n$root_password" | passwd root > /dev/null 2>&1
 fi
 
-# 2. 网络原子化配置 (LAN/WAN)
-uci -q batch <<EOF
-  # --- LAN (Bridge模式) ---
-  delete network.lan_dev
-  set network.lan_dev=device
-  set network.lan_dev.name='br-lan'
-  set network.lan_dev.type='bridge'
-  add_list network.lan_dev.ports='eth0'
+# --- 2. 网络配置 (适配新版桥接语法) ---
+# LAN 配置 - 使用新版 device 语法
+uci -q delete network.lan
+uci -q set network.lan=interface
+uci -q set network.lan.proto='static'
+uci -q set network.lan.ipaddr="$lan_ip_address"
+uci -q set network.lan.netmask='255.255.255.0'
+uci -q set network.lan.device='eth0'
+uci -q set network.lan.delegate='0'
 
-  set network.lan=interface
-  set network.lan.proto='static'
-  set network.lan.device='br-lan'
-  set network.lan.ipaddr='$lan_ip_address'
-  set network.lan.netmask='255.255.255.0'
-  set network.lan.delegate='0'
+# WAN 配置 (PPPoE)
+uci -q delete network.wan
+uci -q set network.wan=interface
+uci -q set network.wan.proto='pppoe'
+uci -q set network.wan.device='eth1'
+uci -q set network.wan.username="$pppoe_username"
+uci -q set network.wan.password="$pppoe_password"
+uci -q set network.wan.ipv6='auto'
+uci -q set network.wan.auto='1'
 
-  # --- WAN (PPPoE) ---
-  delete network.wan
-  set network.wan=interface
-  set network.wan.proto='pppoe'
-  set network.wan.device='eth1'
-  set network.wan.username='$pppoe_username'
-  set network.wan.password='$pppoe_password'
-  set network.wan.ipv6='auto'
+# WAN6 配置 (IPv6)
+uci -q delete network.wan6
+uci -q set network.wan6=interface
+uci -q set network.wan6.proto='dhcpv6'
+uci -q set network.wan6.device='eth1'
+uci -q set network.wan6.auto='1'
 
-  # --- ttyd 配置 ---
-  $(uci -q get ttyd.@ttyd[0] >/dev/null && echo "set ttyd.@ttyd[0].command='$ttyd_auto_login'")
-
-  commit network
-  $(uci -q get ttyd.@ttyd[0] >/dev/null && echo "commit ttyd")
-EOF
-
-# 3. WiFi 动态探测与配置
-# 只有当系统识别到无线物理设备 (radio0) 时才执行配置
-if uci -q get wireless.radio0 > /dev/null; then
-    echo "Wireless hardware detected, configuring WiFi..."
-    uci -q batch <<EOF
-      set wireless.radio0.disabled='0'
-      set wireless.radio0.cell_density='0'
-
-      # 配置第一个无线接口
-      set wireless.default_radio0=wifi-iface
-      set wireless.default_radio0.device='radio0'
-      set wireless.default_radio0.network='lan'
-      set wireless.default_radio0.mode='ap'
-      set wireless.default_radio0.ssid='$wlan_name'
-      set wireless.default_radio0.encryption='psk2'
-      set wireless.default_radio0.key='$wlan_password'
-
-      commit wireless
-EOF
-    # 强制重新加载无线以生效
-    wifi up
-else
-    echo "No wireless hardware (radio0) found, skipping WiFi config."
+# --- 3. ttyd 自动登录 ---
+if uci -q get ttyd.@ttyd[0] > /dev/null 2>&1; then
+    uci -q set ttyd.@ttyd[0].command='/bin/login -f root'
+    uci -q set ttyd.@ttyd[0].enabled='1'
 fi
 
-# 4. 智能 Shell 切换
+# --- 4. WiFi 配置 (针对 radio0) ---
+if uci -q get wireless.radio0 > /dev/null 2>&1; then
+    uci -q set wireless.radio0.disabled='0'
+    uci -q set wireless.radio0.country='CN'
+    uci -q set wireless.radio0.cell_density='0'
+
+    # 如果 default_radio0 不存在则创建
+    if ! uci -q get wireless.default_radio0 > /dev/null 2>&1; then
+        uci -q add wireless wifi-iface
+        uci -q rename wireless.@wifi-iface[-1]='default_radio0'
+    fi
+
+    uci -q set wireless.default_radio0.device='radio0'
+    uci -q set wireless.default_radio0.network='lan'
+    uci -q set wireless.default_radio0.mode='ap'
+    uci -q set wireless.default_radio0.ssid="$wlan_name"
+    uci -q set wireless.default_radio0.encryption='psk2'
+    uci -q set wireless.default_radio0.key="$wlan_password"
+fi
+
+# --- 5. 切换默认 Shell 为 bash ---
 if [ -x "/bin/bash" ]; then
-  sed -i 's|/bin/ash|/bin/bash|g' /etc/passwd
+    sed -i 's|/bin/ash|/bin/bash|g' /etc/passwd
 fi
 
-echo "All professional settings finished!"
+# --- 提交所有修改 ---
+uci commit
+
+# 重要：在 uci-defaults 中不手动重启服务
+# 系统执行完所有 defaults 脚本后会自动处理
+echo "初始化配置完成"
 exit 0

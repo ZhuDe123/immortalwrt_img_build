@@ -1,8 +1,8 @@
-name: ImmortalWrt24.10 x86_64 Generic Builder
+name: ImmortalWrt 24.10 x86_64 Generic Builder
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   workflow_dispatch:
 
 env:
@@ -11,11 +11,14 @@ env:
   PACKAGES_FOLDER: packages24
   UCI_CUSTOM_FILE: uci-custom
   ROOTFS_PARTSIZE: 4096
+  # Image Builder 版本，可根据需要升级
+  IMMORTALWRT_VERSION: 24.10.5
   DOWNLOAD_URL: https://downloads.immortalwrt.org/releases/24.10.5/targets/x86/64/immortalwrt-imagebuilder-24.10.5-x86-64.Linux-x86_64.tar.zst
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -24,67 +27,143 @@ jobs:
       - name: Initialization environment
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential libncurses5-dev libncursesw5-dev zlib1g-dev gawk git gettext libssl-dev xsltproc wget unzip python3 qemu-utils genisoimage zstd
+          sudo apt-get install -y \
+            build-essential \
+            libncurses5-dev \
+            libncursesw5-dev \
+            zlib1g-dev \
+            gawk \
+            git \
+            gettext \
+            libssl-dev \
+            xsltproc \
+            wget \
+            unzip \
+            python3 \
+            qemu-utils \
+            genisoimage \
+            zstd
 
       - name: Download and extract Image Builder
         run: |
-          wget -O /tmp/imagebuilder.tar.zst ${{ env.DOWNLOAD_URL }}
+          echo "Downloading Image Builder from: ${{ env.DOWNLOAD_URL }}"
+          wget -q --show-progress -O /tmp/imagebuilder.tar.zst ${{ env.DOWNLOAD_URL }}
           sudo tar -I zstd -C /tmp -xvf /tmp/imagebuilder.tar.zst
-          echo "ROOT_DIR=/tmp/$(basename ${{ env.DOWNLOAD_URL }} .tar.zst)" >> $GITHUB_ENV
+          ROOT_DIR="/tmp/immortalwrt-imagebuilder-${{ env.IMMORTALWRT_VERSION }}-x86-64.Linux-x86_64"
+          echo "ROOT_DIR=$ROOT_DIR" >> $GITHUB_ENV
+          echo "Image Builder extracted to: $ROOT_DIR"
 
       - name: Configure Generic Image
         run: |
           CONFIG_FILE="${{ env.ROOT_DIR }}/.config"
-          
+
           # 1. 仅开启通用的 Combined 镜像生成 (.img.gz)
           sudo sed -i 's/# CONFIG_TARGET_ROOTFS_COMBINED_SQUASHFS is not set/CONFIG_TARGET_ROOTFS_COMBINED_SQUASHFS=y/' $CONFIG_FILE
-          
+
           # 2. 设置分区大小为 4GB
           sudo sed -i "s/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=${{ env.ROOTFS_PARTSIZE }}/g" $CONFIG_FILE
-          
+
           # 3. 禁用其他特定虚拟机格式以提速
           sudo sed -i 's/^CONFIG_VMDK_IMAGES=y/# CONFIG_VMDK_IMAGES is not set/' $CONFIG_FILE
+          sudo sed -i 's/^CONFIG_VDI_IMAGES=y/# CONFIG_VDI_IMAGES is not set/' $CONFIG_FILE
           sudo sed -i 's/^CONFIG_ISO_IMAGES=y/# CONFIG_ISO_IMAGES is not set/' $CONFIG_FILE
+          sudo sed -i 's/^CONFIG_QCOW2_IMAGES=y/# CONFIG_QCOW2_IMAGES is not set/' $CONFIG_FILE
+
+          echo "Configuration updated:"
+          grep "COMBINED_SQUASHFS\|PARTSIZE" $CONFIG_FILE || true
 
       - name: Sync Files & Scripts
         run: |
-          # 保持之前的专业逻辑：自动创建目录并注入 uci-custom
+          # 创建 uci-defaults 目录并注入配置脚本
           sudo mkdir -p ${{ env.ROOT_DIR }}/files/etc/uci-defaults
           if [ -f "${{ env.UCI_CUSTOM_FILE }}" ]; then
             sudo cp ${{ env.UCI_CUSTOM_FILE }} ${{ env.ROOT_DIR }}/files/etc/uci-defaults/99-custom-settings
             sudo chmod +x ${{ env.ROOT_DIR }}/files/etc/uci-defaults/99-custom-settings
+            echo "✓ uci-custom script injected"
+          else
+            echo "⚠ uci-custom file not found, skipping..."
           fi
-          
-          # 注入本地插件包
-          if [ -d "${{ env.PACKAGES_FOLDER }}" ]; then
+
+          # 注入本地插件包 (如果存在)
+          if [ -d "${{ env.PACKAGES_FOLDER }}" ] && [ "$(ls -A ${{ env.PACKAGES_FOLDER }}/*.ipk 2>/dev/null)" ]; then
             sudo mkdir -p ${{ env.ROOT_DIR }}/packages
-            sudo cp ${{ env.PACKAGES_FOLDER }}/*.ipk ${{ env.ROOT_DIR }}/packages/ || true
+            sudo cp ${{ env.PACKAGES_FOLDER }}/*.ipk ${{ env.ROOT_DIR }}/packages/
+            echo "✓ Local packages injected: $(ls ${{ env.PACKAGES_FOLDER }}/*.ipk | wc -l) files"
+          else
+            echo "⚠ No local packages found, skipping..."
+          fi
+
+      - name: Validate packages list
+        run: |
+          echo "Validating packages list..."
+          if [ -f "${{ github.workspace }}/${{ env.PACKAGES_LIST_FILE }}" ]; then
+            # 过滤空行和注释
+            grep -v '^#' ${{ github.workspace }}/${{ env.PACKAGES_LIST_FILE }} | grep -v '^$' > /tmp/valid_packages.txt
+            echo "Valid packages to install:"
+            cat /tmp/valid_packages.txt
+          else
+            echo "⚠ Packages list file not found!"
           fi
 
       - name: Compile Generic Firmware
         run: |
           cd ${{ env.ROOT_DIR }}
-          
-          # 读取你的 packages24.list
+
+          # 读取 packages24.list，过滤空行和注释
           if [ -f "$GITHUB_WORKSPACE/${{ env.PACKAGES_LIST_FILE }}" ]; then
-            # 自动处理可能存在的 dnsmasq 冲突：在 PACKAGES 列表开头强制加入 -dnsmasq
-            EXTRA_PKGS=$(cat "$GITHUB_WORKSPACE/${{ env.PACKAGES_LIST_FILE }}" | tr '\n' ' ')
+            # 过滤掉空行和以#开头的注释行
+            EXTRA_PKGS=$(grep -v '^#' "$GITHUB_WORKSPACE/${{ env.PACKAGES_LIST_FILE }}" | grep -v '^$' | tr '\n' ' ')
+            echo "Installing packages: $EXTRA_PKGS"
           else
             EXTRA_PKGS=""
+            echo "⚠ No packages list found, using default packages only"
           fi
-          
-          # 执行编译，注意这里不再强加 BASIC_PKGS，让系统按 Profile 默认生成
-          sudo make image PROFILE="${{ env.PROFILE }}" PACKAGES="-dnsmasq $EXTRA_PKGS" FILES="files"
+
+          # 执行编译
+          # -dnsmasq 用于避免与 dnsmasq-full 冲突
+          sudo make image PROFILE="${{ env.PROFILE }}" \
+            PACKAGES="-dnsmasq $EXTRA_PKGS" \
+            FILES="files" \
+            V=s 2>&1 | tee /tmp/build.log
+
+      - name: Check build result
+        run: |
+          if [ -f /tmp/build.log ]; then
+            if grep -q "Error" /tmp/build.log; then
+              echo "::error::Build failed! Check the logs above."
+              echo "Build errors found:"
+              grep -i "error\|failed" /tmp/build.log || true
+              exit 1
+            fi
+          fi
 
       - name: Organize Artifacts
         run: |
           sudo mkdir -p /tmp/bin_firmware
-          # 提取通用 Combined 镜像
+          
+          # 提取主要的 Combined 镜像 (BIOS + UEFI)
+          echo "Collecting firmware files..."
           sudo find ${{ env.ROOT_DIR }}/bin -type f -name "*combined-squashfs.img.gz" -exec sudo cp {} /tmp/bin_firmware/ \;
+          sudo find ${{ env.ROOT_DIR }}/bin -type f -name "*combined-efi.img.gz" -exec sudo cp {} /tmp/bin_firmware/ \;
+          
+          # 列出所有生成的文件
+          echo "Generated firmware files:"
+          ls -lh /tmp/bin_firmware/
+
           echo "FILE_DATE=$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
       - name: Upload Firmware
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt-Generic-x86-64-${{ env.FILE_DATE }}
+          name: ImmortalWrt-x86-64-generic-${{ env.FILE_DATE }}
           path: /tmp/bin_firmware
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ env.FILE_DATE }}
+          path: /tmp/build.log
+          retention-days: 7
