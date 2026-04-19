@@ -21,11 +21,6 @@ luci-i18n-nikki-zh-cn
 luci-i18n-syncthing-zh-cn
 
 
-kmod-oaf
-appfilter
-luci-app-oaf
-luci-i18n-oaf-zh-cn
-
 luci-theme-argon
 luci-i18n-lucky-zh-cn
 luci-app-openvpn-server

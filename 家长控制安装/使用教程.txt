@@ -1,0 +1,15 @@
+opkg install kmod-oaf_*.ipk appfilter_*.ipk luci-app-oaf_*.ipk luci-i18n-oaf-zh-cn_*.ipk
+
+# 1. 停止服务（防止进程占用内核模块）
+/etc/init.d/appfilter stop
+/etc/init.d/appfilter disable
+
+# 2. 卸载界面、语言包和用户态工具
+opkg remove luci-i18n-oaf-zh-cn
+opkg remove luci-app-oaf
+opkg remove appfilter
+
+# 3. 卸载内核模块（最后一步）
+opkg remove kmod-oaf
+
+rm -rf /etc/config/appfilter

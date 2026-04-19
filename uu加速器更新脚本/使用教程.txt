@@ -4,6 +4,7 @@
 # luci-i18n-uugamebooster-zh-cn
 
 # 将uu.tar.gz解压，把解压出来的三个文件uu.conf、uuplugin、xtables-nft-multi上传到OpenWrt 当前的版本是v12.1.18
+tar -zxvf uu.tar.gz
 
 
 #!/bin/bash
