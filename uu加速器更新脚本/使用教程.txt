@@ -1,0 +1,30 @@
+# 先安装uu加速器 https://hwhloveslife.com/software/uugamebooster/
+# uugamebooster
+# luci-app-uugamebooster
+# luci-i18n-uugamebooster-zh-cn
+
+# 将uu.tar.gz解压，把解压出来的三个文件uu.conf、uuplugin、xtables-nft-multi上传到OpenWrt 当前的版本是v12.1.18
+
+
+#!/bin/bash
+set -e
+
+echo "== Changing file permissions =="
+chmod 600 uu.conf
+chmod 755 uuplugin
+chmod 755 xtables-nft-multi
+
+echo "== Renaming uuplugin to uugamebooster =="
+mv uuplugin ./uugamebooster
+
+echo "== Removing old files =="
+rm /usr/share/uugamebooster/uu.conf
+rm /usr/libexec/uugamebooster/uugamebooster
+rm /usr/libexec/uugamebooster/xtables-nft-multi
+
+echo "== Moving new files =="
+mv uu.conf /usr/share/uugamebooster/
+mv uugamebooster /usr/libexec/uugamebooster/
+mv xtables-nft-multi /usr/libexec/uugamebooster/
+
+echo "== Installation completed! =="
