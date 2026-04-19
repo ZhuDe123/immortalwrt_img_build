@@ -37,13 +37,6 @@ uci -q set network.wan.password="$pppoe_password"
 uci -q set network.wan.ipv6='auto'
 uci -q set network.wan.auto='1'
 
-# WAN6 配置 (IPv6)
-uci -q delete network.wan6
-uci -q set network.wan6=interface
-uci -q set network.wan6.proto='dhcpv6'
-uci -q set network.wan6.device='eth1'
-uci -q set network.wan6.auto='1'
-
 # --- 3. ttyd 自动登录 ---
 if uci -q get ttyd.@ttyd[0] > /dev/null 2>&1; then
     uci -q set ttyd.@ttyd[0].command='/bin/login -f root'
